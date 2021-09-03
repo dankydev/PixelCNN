@@ -9,32 +9,34 @@ import os
 from utils import str2bool, save_samples, get_loaders
 
 from tqdm import tqdm
+from conf import Conf
 import wandb
 
 from pixelcnn import PixelCNN
-
-TRAIN_DATASET_ROOT = '.data/train/'
-TEST_DATASET_ROOT = '.data/test/'
+from dataset import AutoencDS
+from torch.utils.data import Dataset, DataLoader
 
 MODEL_PARAMS_OUTPUT_DIR = 'model'
 MODEL_PARAMS_OUTPUT_FILENAME = 'params.pth'
 
 TRAIN_SAMPLES_DIR = 'train_samples'
 
+ds = AutoencDS(cnf=Conf(conf_file_path='/home/manicardi/Documenti/tesi/PixelCNN/conf/default.yaml', exp_name='toy'), mode='train')
+loader = DataLoader(dataset=ds, batch_size=32, shuffle=True, num_workers=2)
 
-def train(cfg, model, device, train_loader, optimizer, scheduler, epoch):
+
+def train(cfg, model, device, optimizer, scheduler, epoch):
     model.train()
 
-    for images, labels in tqdm(train_loader, desc='Epoch {}/{}'.format(epoch + 1, cfg.epochs)):
+    for images in loader:
         optimizer.zero_grad()
 
         images = images.to(device, non_blocking=True)
-        labels = labels.to(device, non_blocking=True)
 
         normalized_images = images.float() / (cfg.color_levels - 1)
 
-        outputs = model(normalized_images, labels)
-        loss = F.cross_entropy(outputs, images)
+        outputs = model(normalized_images, torch.tensor([0], device=device))
+        loss = F.cross_entropy(outputs, images.to(torch.long))
         loss.backward()
 
         clip_grad_norm_(model.parameters(), max_norm=cfg.max_norm)
@@ -44,7 +46,12 @@ def train(cfg, model, device, train_loader, optimizer, scheduler, epoch):
     scheduler.step()
 
 
-def test_and_sample(cfg, model, device, test_loader, height, width, losses, params, epoch):
+def test_and_sample(model, cfg, device, epoch):
+    samples = model.sample((3, 128, 128), cfg.epoch_samples, device=device)
+    save_samples(samples, TRAIN_SAMPLES_DIR, 'epoch{}_samples.png'.format(epoch + 1))
+
+
+"""def test_and_sample(cfg, model, device, test_loader, height, width, losses, params, epoch):
     test_loss = 0
 
     model.eval()
@@ -70,7 +77,7 @@ def test_and_sample(cfg, model, device, test_loader, height, width, losses, para
 
     samples = model.sample((3, height, width), cfg.epoch_samples, device=device)
     save_samples(samples, TRAIN_SAMPLES_DIR, 'epoch{}_samples.png'.format(epoch + 1))
-
+"""
 
 def main():
     parser = argparse.ArgumentParser(description='PixelCNN')
@@ -79,8 +86,8 @@ def main():
                         help='Number of epochs to train model for')
     parser.add_argument('--batch-size', type=int, default=32,
                         help='Number of images per mini-batch')
-    parser.add_argument('--dataset', type=str, default='mnist',
-                        help='Dataset to train model on. Either mnist, fashionmnist or cifar.')
+    """parser.add_argument('--dataset', type=str, default='mnist',
+                        help='Dataset to train model on. Either mnist, fashionmnist or cifar.')"""
 
     parser.add_argument('--causal-ksize', type=int, default=7,
                         help='Kernel size of causal convolution')
@@ -112,8 +119,8 @@ def main():
 
     cfg = parser.parse_args()
 
-    wandb.init(project="PixelCNN")
-    wandb.config.update(cfg)
+    """wandb.init(project="PixelCNN")
+    wandb.config.update(cfg)"""
     torch.manual_seed(42)
 
     EPOCHS = cfg.epochs
@@ -123,19 +130,17 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() and cfg.cuda else "cpu")
     model.to(device)
 
-    train_loader, test_loader, HEIGHT, WIDTH = get_loaders(cfg.dataset, cfg.batch_size, cfg.color_levels, TRAIN_DATASET_ROOT, TEST_DATASET_ROOT)
-
     optimizer = optim.Adam(model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay)
     scheduler = optim.lr_scheduler.CyclicLR(optimizer, cfg.learning_rate, 10*cfg.learning_rate, cycle_momentum=False)
 
-    wandb.watch(model)
+    """wandb.watch(model)"""
 
     losses = []
     params = []
 
     for epoch in range(EPOCHS):
-        train(cfg, model, device, train_loader, optimizer, scheduler, epoch)
-        test_and_sample(cfg, model, device, test_loader, HEIGHT, WIDTH, losses, params, epoch)
+        train(cfg, model, device, optimizer, scheduler, epoch)
+        test_and_sample(model, cfg, device, epoch)
 
     print('\nBest test loss: {}'.format(np.amin(np.array(losses))))
     print('Best epoch: {}'.format(np.argmin(np.array(losses)) + 1))

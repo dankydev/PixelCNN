@@ -1,0 +1,23 @@
+# --- training params
+LR: 0.0001
+EPOCHS: 128
+
+# --- dataset/dataloader params
+N_WORKERS: 4
+BATCH_SIZE: 16
+DS_PATH: '/home/manicardi/Documenti/tesi/PixelCNN/dataset'
+FLUP_UD: True
+
+# --- loss params
+MSE_MUL: 10
+SSIM_MUL: 3
+VGG_MUL: 0
+
+# --- model params
+N_RES_LAYERS: 2
+MID_CHANNELS: 128
+CODE_CHANNELS: 16
+
+# --- other params
+DEVICE: cuda
+NOISE_SIGMA: 0.25
